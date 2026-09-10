@@ -12,29 +12,36 @@ def identify_swing_points(df: pd.DataFrame, window: int = 5) -> pd.DataFrame:
 
 def detect_market_structure_breaks(df: pd.DataFrame) -> dict:
     """
-    Detects Break of Structure (BOS) and Change of Character (ChoCH) 
+    Detects Break of Structure (BOS) and Change of Character (ChoCH)
     to determine trend continuation or institutional reversals.
     """
     df = identify_swing_points(df)
     valid_highs = df['swing_high'].dropna()
     valid_lows = df['swing_low'].dropna()
-    
+
     if len(valid_highs) < 2 or len(valid_lows) < 2:
-        return {"structure": "CONSOLIDATION", "bos": False, "choch": False}
-        
+        return {
+            "structure_state": "CONSOLIDATION",
+            "bos_bullish": False,
+            "bos_bearish": False,
+            "choch_detected": False,
+            "last_swing_high": float(valid_highs.iloc[-1]) if len(valid_highs) > 0 else 0.0,
+            "last_swing_low": float(valid_lows.iloc[-1]) if len(valid_lows) > 0 else 0.0
+        }
+
     last_high = valid_highs.iloc[-1]
     prev_high = valid_highs.iloc[-2]
     last_low = valid_lows.iloc[-1]
     prev_low = valid_lows.iloc[-2]
-    
+
     current_close = df['close'].iloc[-1]
-    
+
     bos_bullish = current_close > last_high and last_high > prev_high
     bos_bearish = current_close < last_low and last_low < prev_low
-    
+
     choch_bullish = current_close > last_high and last_low > prev_low and last_high <= prev_high
     choch_bearish = current_close < last_low and last_high < prev_high and last_low >= prev_low
-    
+
     structure_state = "BULLISH_TREND" if last_high > prev_high and last_low > prev_low else "BEARISH_TREND"
     if choch_bullish or choch_bearish:
         structure_state = "CHOCH_REVERSAL_ZONE"
@@ -50,16 +57,16 @@ def detect_market_structure_breaks(df: pd.DataFrame) -> dict:
 
 def identify_order_blocks(df: pd.DataFrame) -> dict:
     """
-    Locates institutional Bullish and Bearish Order Blocks (last opposing candle 
+    Locates institutional Bullish and Bearish Order Blocks (last opposing candle
     before an impulsive displacement move).
     """
     df = df.copy()
     df['body_size'] = abs(df['close'] - df['open'])
     avg_body = df['body_size'].mean()
-    
+
     bullish_obs = []
     bearish_obs = []
-    
+
     for i in range(1, len(df) - 1):
         # Impulsive bullish move (green candle with body > 1.5x average)
         if df['close'].iloc[i] > df['open'].iloc[i] and df['body_size'].iloc[i] > (avg_body * 1.5):
@@ -70,7 +77,7 @@ def identify_order_blocks(df: pd.DataFrame) -> dict:
                     "ob_high": float(df['high'].iloc[i-1]),
                     "ob_low": float(df['low'].iloc[i-1])
                 })
-                
+
         # Impulsive bearish move (red candle with body > 1.5x average)
         elif df['close'].iloc[i] < df['open'].iloc[i] and df['body_size'].iloc[i] > (avg_body * 1.5):
             # The last green candle before this move is the Bearish Order Block
@@ -80,7 +87,7 @@ def identify_order_blocks(df: pd.DataFrame) -> dict:
                     "ob_high": float(df['high'].iloc[i-1]),
                     "ob_low": float(df['low'].iloc[i-1])
                 })
-                
+
     return {
         "latest_bullish_ob": bullish_obs[-1] if bullish_obs else None,
         "latest_bearish_ob": bearish_obs[-1] if bearish_obs else None
